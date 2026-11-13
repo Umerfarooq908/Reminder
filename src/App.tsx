@@ -26,6 +26,7 @@ import {
 type Language = "en" | "ur";
 type Page = "today" | "week" | "month" | "assistant" | "checklist" | "progress" | "settings";
 type Priority = "Low" | "Medium" | "High";
+type Recurrence = "daily" | "weekly" | "monthly";
 
 type Task = {
   id: string;
@@ -38,6 +39,8 @@ type Task = {
   doneDates?: string[];
   steps?: ChecklistStep[];
   assistantGenerated?: boolean;
+  recurrence?: Recurrence;
+  recurrenceDay?: number;
   fixed: boolean;
   priority: Priority;
   day: number;
@@ -227,6 +230,15 @@ function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function isTaskScheduledForDate(task: Task, date: Date): boolean {
+  if (task.recurrence === "weekly") return (task.recurrenceDay ?? 1) === date.getDay();
+  if (task.recurrence === "monthly") {
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    return Math.min(task.recurrenceDay ?? 1, lastDay) === date.getDate();
+  }
+  return true;
+}
+
 function isTaskDone(task: Task, key: string): boolean {
   return task.doneDates?.includes(key) ?? (key === dateKey(new Date()) && task.done);
 }
@@ -387,6 +399,8 @@ export default function App() {
     category: "Personal",
     priority: "Medium" as Priority,
     fixed: false,
+    recurrence: "daily" as Recurrence,
+    recurrenceDay: new Date().getDay(),
   });
 
   const text = labels[language];
@@ -423,7 +437,7 @@ export default function App() {
       const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
       for (const task of tasks) {
         const key = `${dateKey(now)}:${task.id}`;
-        if (task.day === 0 && task.time === currentTime && !isTaskDone(task, dateKey(now)) && !firedReminders.current.has(key)) {
+        if (isTaskScheduledForDate(task, now) && task.time === currentTime && !isTaskDone(task, dateKey(now)) && !firedReminders.current.has(key)) {
           firedReminders.current.add(key);
           localStorage.setItem("dw-fired-reminders", JSON.stringify([...firedReminders.current]));
           serviceWorkerReady.current?.then((registration) => registration.showNotification(`Daywell · ${task.title}`, { body: `It’s time for your ${task.category.toLowerCase()} task.` })).catch(() => undefined);
@@ -442,10 +456,18 @@ export default function App() {
   }, [language]);
 
   const todayKey = dateKey(new Date());
+  const monthDays = useMemo(() => Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).getDate() }, (_, index) => new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), index + 1)), [selectedMonth]);
+  const monthTasks = useMemo(() => tasks.filter((task) => monthDays.some((day) => isTaskScheduledForDate(task, day))), [tasks, monthDays]);
+  const weekDates = useMemo(() => {
+    const monday = new Date();
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    return Array.from({ length: 7 }, (_, index) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index));
+  }, []);
   const todayTasks = useMemo(
     () =>
       tasks
-        .filter((task) => task.day === 0)
+        .filter((task) => isTaskScheduledForDate(task, new Date()))
         .map((task) => ({ ...task, done: isTaskDone(task, todayKey) }))
         .sort((first, second) => first.time.localeCompare(second.time)),
     [tasks, todayKey],
@@ -506,6 +528,8 @@ export default function App() {
       fixed: form.fixed,
       priority: form.priority,
       day: 0,
+      recurrence: form.recurrence,
+      recurrenceDay: form.recurrenceDay,
     };
 
     setTasks((currentTasks) => [...currentTasks, newTask]);
@@ -1002,17 +1026,13 @@ export default function App() {
                 <CalendarDays size={20} />
               </div>
               <div className="week-grid">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-                  (day, index) => (
-                    <div className="week-day" key={day}>
-                      <small>{day}</small>
-                      <b>{index + 1}</b>
-                      <span>
-                        {tasks.filter((task) => task.day === index).length} tasks
-                      </span>
-                    </div>
-                  ),
-                )}
+                {weekDates.map((day) => (
+                  <div className="week-day" key={dateKey(day)}>
+                    <small>{new Intl.DateTimeFormat(language === "ur" ? "ur-PK" : "en-US", { weekday: "short" }).format(day)}</small>
+                    <b>{day.getDate()}</b>
+                    <span>{tasks.filter((task) => isTaskScheduledForDate(task, day)).length} tasks</span>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -1030,21 +1050,21 @@ export default function App() {
               <div className="sheet-legend"><span><i className="sheet-done">✓</i> Done</span><span><i className="sheet-missed">×</i> Not done</span><span>— Future date</span></div>
               <div className="month-table-wrap">
                 <table className="month-table">
-                  <thead><tr><th className="task-heading">Task</th>{Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).getDate() }, (_, i) => <th key={i}>{i + 1}</th>)}</tr></thead>
-                  <tbody>{tasks.filter((task) => task.day === 0).map((task) => <tr key={task.id}>
-                    <th className="task-heading"><b>{task.title}</b><small>{task.time} · {task.category}</small></th>
-                    {Array.from({ length: new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0).getDate() }, (_, i) => {
-                      const day = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), i + 1);
+                  <thead><tr><th className="task-heading">Task</th>{monthDays.map((day) => <th key={dateKey(day)}>{day.getDate()}</th>)}</tr></thead>
+                  <tbody>{monthTasks.map((task) => <tr key={task.id}>
+                    <th className="task-heading"><b>{task.title}</b><small>{task.time} · {task.category} · {task.recurrence ?? "daily"}</small></th>
+                    {monthDays.map((day) => {
                       const key = dateKey(day);
+                      const scheduled = isTaskScheduledForDate(task, day);
                       const done = isTaskDone(task, key);
                       const future = key > todayKey;
-                      return <td key={key}><button className={`sheet-cell ${done ? "sheet-done" : future ? "sheet-future" : "sheet-missed"}`} disabled={future} onClick={() => toggleTaskForDate(task.id, key)} aria-label={`${task.title}, ${key}: ${done ? "done" : future ? "future" : "not done"}`}>{done ? "✓" : future ? "—" : "×"}</button></td>;
+                      return <td key={key}><button className={`sheet-cell ${!scheduled || future ? "sheet-future" : done ? "sheet-done" : "sheet-missed"}`} disabled={!scheduled || future} onClick={() => toggleTaskForDate(task.id, key)} aria-label={`${task.title}, ${key}: ${!scheduled ? "not scheduled" : done ? "done" : future ? "future" : "not done"}`}>{!scheduled || future ? "—" : done ? "✓" : "×"}</button></td>;
                     })}
                   </tr>)}</tbody>
                 </table>
-                {tasks.filter((task) => task.day === 0).length === 0 && <div className="empty">Add tasks to see them in your monthly sheet.</div>}
+                {monthTasks.length === 0 && <div className="empty">Add tasks to see them in your monthly sheet.</div>}
               </div>
-              <p className="muted month-note">Your completion history is saved in this browser. Tasks repeat daily in this sheet.</p>
+              <p className="muted month-note">Your completion history is saved in this browser. Weekly and monthly tasks appear only on their scheduled dates.</p>
             </section>
           )}
 
@@ -1220,6 +1240,22 @@ export default function App() {
               </label>
             </div>
 
+            <div className="form-row repeat-row">
+              <label>
+                Repeat
+                <select value={form.recurrence} onChange={(event) => { const recurrence = event.target.value as Recurrence; setForm({ ...form, recurrence, recurrenceDay: recurrence === "monthly" ? new Date().getDate() : recurrence === "weekly" ? new Date().getDay() : form.recurrenceDay }); }}>
+                  <option value="daily">Every day</option>
+                  <option value="weekly">Every week</option>
+                  <option value="monthly">Every month</option>
+                </select>
+              </label>
+              {form.recurrence === "weekly" ? (
+                <label>Day of week<select value={form.recurrenceDay} onChange={(event) => setForm({ ...form, recurrenceDay: Number(event.target.value) })}>{[{ value: 1, label: "Monday" }, { value: 2, label: "Tuesday" }, { value: 3, label: "Wednesday" }, { value: 4, label: "Thursday" }, { value: 5, label: "Friday" }, { value: 6, label: "Saturday" }, { value: 0, label: "Sunday" }].map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label>
+              ) : form.recurrence === "monthly" ? (
+                <label>Day of month<input type="number" min="1" max="31" value={Math.max(1, form.recurrenceDay)} onChange={(event) => setForm({ ...form, recurrenceDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })} /></label>
+              ) : <p className="repeat-help">This task appears on every day.</p>}
+            </div>
+
             <div className="form-row">
               <label>
                 {text.category}
@@ -1318,6 +1354,9 @@ function TaskRow({
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const repeatLabel = task.recurrence === "weekly"
+    ? ` · Weekly · ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][task.recurrenceDay ?? 0]}`
+    : task.recurrence === "monthly" ? ` · Monthly · day ${task.recurrenceDay ?? 1}` : " · Daily";
   return (
     <article className={`task-row ${task.done ? "is-done" : ""}`}>
       <button
@@ -1335,6 +1374,7 @@ function TaskRow({
         <small>
           {task.category}
           {task.fixed ? " · Fixed" : ""} · {task.duration} {text.minutes}
+          {repeatLabel}
         </small>
       </div>
 
