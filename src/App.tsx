@@ -250,6 +250,7 @@ export default function App() {
   const [prayerData, setPrayerData] = useState<PrayerData | null>(() => readStored("dw-prayer-times", null));
   const [remindersEnabled, setRemindersEnabled] = useState(() => localStorage.getItem("dw-reminders") === "yes");
   const firedReminders = useRef<Set<string>>(new Set(readStored<string[]>("dw-fired-reminders", [])));
+  const serviceWorkerReady = useRef<Promise<ServiceWorkerRegistration> | null>(null);
 
   const [form, setForm] = useState({
     title: "",
@@ -265,6 +266,13 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("dw-tasks", JSON.stringify(tasks));
   }, [tasks]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      serviceWorkerReady.current = navigator.serviceWorker.register("/Reminder/sw.js").then(() => navigator.serviceWorker.ready);
+      serviceWorkerReady.current.catch(() => undefined);
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("dw-prayer-settings", JSON.stringify(prayerSettings));
@@ -286,9 +294,9 @@ export default function App() {
       for (const task of tasks) {
         const key = `${dateKey(now)}:${task.id}`;
         if (task.day === 0 && task.time === currentTime && !isTaskDone(task, dateKey(now)) && !firedReminders.current.has(key)) {
-          new Notification(`Daywell · ${task.title}`, { body: `It’s time for your ${task.category.toLowerCase()} task.` });
           firedReminders.current.add(key);
           localStorage.setItem("dw-fired-reminders", JSON.stringify([...firedReminders.current]));
+          serviceWorkerReady.current?.then((registration) => registration.showNotification(`Daywell · ${task.title}`, { body: `It’s time for your ${task.category.toLowerCase()} task.` })).catch(() => undefined);
         }
       }
     };
