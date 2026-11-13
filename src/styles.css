@@ -857,10 +857,18 @@ button {
 .assistant-form label, .settings-section label { display: grid; gap: 7px; }
 .assistant-form textarea { width: 100%; min-height: 110px; resize: vertical; padding: 12px; border: 1px solid #e0e7df; border-radius: 9px; color: #30483a; background: #fff; font: inherit; font-size: 13px; }
 .assistant-form .primary { margin-top: 12px; }
+.remember-routine { margin: 12px 0 4px; color: #627166; font-size: 11px; }
+.remember-routine input { accent-color: #628463; }
 .assistant-reply { max-width: 720px; margin-top: 23px; padding: 18px; border: 1px solid #e8ece7; border-radius: 12px; }
 .assistant-reply p { color: #748078; font-size: 12px; line-height: 1.55; }
 .assistant-plan-row { display: grid; grid-template-columns: 55px 1fr 55px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eff1ee; font-size: 12px; }
 .assistant-plan-row time, .assistant-plan-row span { color: #829087; }
+.assistant-plan-row small { display: block; margin-top: 3px; color: #829087; font-size: 10px; }
+.checklist-task { padding: 3px 0 10px; }
+.checklist-step { display: flex; align-items: center; gap: 9px; width: calc(100% - 44px); margin: 0 0 0 44px; padding: 8px 10px; border: 0; border-bottom: 1px solid #f0f2ef; color: #5e6d63; background: transparent; text-align: left; font-size: 11px; }
+.checklist-step span { color: #628463; font-size: 14px; }
+.checklist-step.step-done { color: #94a097; text-decoration: line-through; }
+.checklist-step.step-done span { color: #28794b; }
 .assistant-reply > .primary { margin-top: 15px; }
 .settings-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #edf0eb; }
 .settings-section h3 { margin: 0 0 6px; font-size: 15px; }
@@ -941,6 +949,8 @@ button {
   .month-controls { gap: 5px; font-size: 10px; }
   .month-table .task-heading { width: 135px; min-width: 135px; max-width: 135px; }
   .settings-section .form-row { grid-template-columns: 1fr; }
+  .assistant-plan-row { grid-template-columns: 44px 1fr; }
+  .assistant-plan-row > span { grid-column: 2; }
 
   .week-day span {
     font-size: 8px;

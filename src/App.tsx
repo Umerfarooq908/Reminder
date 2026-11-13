@@ -34,10 +34,14 @@ type Task = {
   color: string;
   done: boolean;
   doneDates?: string[];
+  steps?: ChecklistStep[];
+  assistantGenerated?: boolean;
   fixed: boolean;
   priority: Priority;
   day: number;
 };
+
+type ChecklistStep = { id: string; title: string; doneDates: string[] };
 
 type Labels = {
   today: string;
@@ -220,6 +224,107 @@ function readStored<T>(key: string, fallback: T): T {
   }
 }
 
+function clockMinutes(hour: number, minute = 0, suffix?: string): number {
+  let adjusted = hour % 12;
+  if (suffix?.toLowerCase() === "pm") adjusted += 12;
+  return adjusted * 60 + minute;
+}
+
+function formatClock(minutes: number): string {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(normalized / 60)).padStart(2, "0")}:${String(normalized % 60).padStart(2, "0")}`;
+}
+
+function checklistFor(category: string): ChecklistStep[] {
+  const templates: Record<string, string[]> = {
+    Study: ["Open the assignment or notes", "Work without distractions", "Review what is finished and note the next step"],
+    Work: ["Choose the most important work item", "Complete a focused work block", "Review and record the next action"],
+    Prayer: ["Prepare for prayer", "Pray at the scheduled time", "Mark this prayer complete"],
+    Reading: ["Choose a book or passage", "Read for the planned time", "Save one thought or page number"],
+    Wellbeing: ["Get ready and take water", "Walk, stretch, or exercise", "Cool down and note how you feel"],
+    Rest: ["Set a gentle alarm", "Rest away from distractions", "Get up slowly and drink water"],
+    Personal: ["Get the items you need", "Complete the task", "Mark it done and prepare the next step"],
+    Meals: ["Prepare a simple meal", "Eat without rushing", "Drink water and tidy up"],
+  };
+  return (templates[category] ?? templates.Personal).map((title) => ({ id: makeId(), title, doneDates: [] }));
+}
+
+function buildRoutinePlan(request: string, prayerData: PrayerData | null): Task[] {
+  const text = request.toLowerCase();
+  const has = (pattern: RegExp) => pattern.test(text);
+  const fixed: Task[] = [];
+  const flexible: { title: string; category: string; duration: number; preferred: number; priority: Priority }[] = [];
+  const addFlexible = (title: string, category: string, duration: number, preferred: number, priority: Priority = "Medium") => {
+    flexible.push({ title, category, duration, preferred, priority });
+  };
+
+  const wakeMatch = /(?:wake(?:\s+up)?|get\s+up|uth(?:na)?|subah\s+uth)\D{0,12}(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?/i.exec(text);
+  const sleepMatch = /(?:sleep|bed|sona|so\s+jana|sone)\D{0,12}(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?/i.exec(text);
+  const wakeTime = wakeMatch ? clockMinutes(Number(wakeMatch[1]), Number(wakeMatch[2] ?? 0), wakeMatch[3]) : 7 * 60;
+  const bedtime = sleepMatch ? clockMinutes(Number(sleepMatch[1]), Number(sleepMatch[2] ?? 0), sleepMatch[3]) : 22 * 60;
+  const workOrStudy = has(/work|office|job|school|class|study|assignment|exam|parhai|kaam|homework|imtihan/);
+  const workRange = /(?:from\s*)?(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?\s*(?:-|to|until|till)\s*(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?/i.exec(text);
+  let workEnd = 0;
+  if (workOrStudy && workRange) {
+    const start = clockMinutes(Number(workRange[1]), Number(workRange[2] ?? 0), workRange[3]);
+    let end = clockMinutes(Number(workRange[4]), Number(workRange[5] ?? 0), workRange[6] ?? workRange[3]);
+    if (!workRange[6] && end <= start) end += 12 * 60;
+    if (end <= start) end += 24 * 60;
+    const category = has(/office|job|work|kaam/) ? "Work" : "Study";
+    const title = category === "Work" ? "Work / office commitment" : "Class / study commitment";
+    fixed.push({ id: makeId(), title, time: formatClock(start), duration: end - start, category, color: category === "Study" ? "violet" : "green", done: false, fixed: true, priority: "High", day: 0, assistantGenerated: true, steps: checklistFor(category) });
+    workEnd = end % 1440;
+  }
+
+  addFlexible("Morning routine and plan", "Personal", 15, wakeTime + 10);
+  addFlexible("Breakfast and water", "Meals", 25, wakeTime + 35);
+  if (workOrStudy && !workRange) addFlexible(has(/office|job|work|kaam/) ? "Focused work block" : "Focused study block", has(/office|job|work|kaam/) ? "Work" : "Study", 75, Math.max(9 * 60, wakeTime + 100), "High");
+  if (!workOrStudy) addFlexible("Focus on your top priority", "Personal", 50, Math.max(9 * 60, wakeTime + 100), "High");
+
+  const prayerRequested = has(/prayer|salah|namaz|fajr|zuhr|dhuhr|asr|maghrib|isha|namaz|salah/);
+  if (prayerData || prayerRequested) {
+    if (prayerData) {
+      for (const prayer of ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]) {
+        const time = prayerData.times[prayer]?.slice(0, 5);
+        if (!time) continue;
+        fixed.push({ id: `prayer-${prayer.toLowerCase()}`, title: `${prayer} prayer`, time, duration: 15, category: "Prayer", color: "gold", done: false, fixed: true, priority: "High", day: 0, assistantGenerated: true, steps: checklistFor("Prayer") });
+      }
+    } else {
+      addFlexible("Prayer times · set your city in Settings", "Prayer", 15, 12 * 60, "High");
+    }
+  }
+
+  const quran = has(/qur.?an|tilawat|quran parh/);
+  const reading = has(/read|book|reading|kitab|parhna/) || quran;
+  if (quran) addFlexible("Quran reading", "Reading", 20, wakeTime + 60);
+  if (reading) addFlexible(quran && has(/book|kitab/) ? "Read a book" : "Reading time", "Reading", 25, 20 * 60);
+  if (has(/exercise|walk|gym|outdoor|sport|football|khel|activity/)) addFlexible("Outdoor activity or exercise", "Wellbeing", 35, 17 * 60);
+  else addFlexible("Movement break · suggested", "Wellbeing", 20, 17 * 60);
+  if (has(/podcast|audio/)) addFlexible("Listen to a podcast", "Personal", 30, 19 * 60);
+  if (has(/friend|dost|call|talk|baat/)) addFlexible("Call or meet a friend", "Personal", 30, 18 * 60);
+  if (has(/nap|rest|break|araam|aram|thakan/)) addFlexible("Rest or short nap", "Rest", 25, 14 * 60);
+  else addFlexible("Take a proper rest break · suggested", "Rest", 20, 14 * 60);
+
+  addFlexible("Lunch and a screen break", "Meals", 40, 13 * 60);
+  addFlexible("Prepare for tomorrow", "Personal", 10, Math.max(21 * 60, bedtime - 45));
+  addFlexible("Wind down and get ready for sleep", "Rest", 20, bedtime - 20);
+
+  const occupied: { start: number; end: number }[] = fixed.map((task) => {
+    const [h, m] = task.time.split(":").map(Number);
+    return { start: h * 60 + m, end: h * 60 + m + task.duration };
+  });
+  const planned: Task[] = [...fixed];
+  for (const activity of flexible) {
+    let start = Math.max(wakeTime, activity.preferred);
+    const latest = Math.min(bedtime - activity.duration, 23 * 60);
+    while (start <= latest && occupied.some((block) => start < block.end && start + activity.duration > block.start)) start += 15;
+    if (start > latest) continue;
+    occupied.push({ start, end: start + activity.duration });
+    planned.push({ id: makeId(), title: activity.title, time: formatClock(start), duration: activity.duration, category: activity.category, color: activity.category === "Prayer" ? "gold" : activity.category === "Study" ? "violet" : activity.category === "Rest" ? "blue" : "green", done: false, fixed: false, priority: activity.priority, day: 0, assistantGenerated: true, steps: checklistFor(activity.category) });
+  }
+  return planned.sort((a, b) => a.time.localeCompare(b.time));
+}
+
 function readTasks(): Task[] {
   try {
     const savedTasks = localStorage.getItem("dw-tasks");
@@ -243,7 +348,8 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
-  const [assistantPrompt, setAssistantPrompt] = useState("");
+  const [assistantPrompt, setAssistantPrompt] = useState(() => localStorage.getItem("dw-routine-preferences") ?? "");
+  const [rememberRoutine, setRememberRoutine] = useState(true);
   const [assistantReply, setAssistantReply] = useState("");
   const [assistantPlan, setAssistantPlan] = useState<Task[]>([]);
   const [prayerSettings, setPrayerSettings] = useState<PrayerSettings>(() => readStored("dw-prayer-settings", { city: "", country: "", method: "1", school: "1" }));
@@ -398,6 +504,18 @@ export default function App() {
     }));
   }
 
+  function toggleChecklistStep(taskId: string, stepId: string, key: string) {
+    setTasks((current) => current.map((task) => task.id !== taskId ? task : {
+      ...task,
+      steps: task.steps?.map((step) => {
+        if (step.id !== stepId) return step;
+        const dates = new Set(step.doneDates);
+        if (dates.has(key)) dates.delete(key); else dates.add(key);
+        return { ...step, doneDates: [...dates] };
+      }),
+    }));
+  }
+
   async function enableReminders() {
     if (!("Notification" in window)) {
       notify("This browser does not support notifications");
@@ -443,31 +561,27 @@ export default function App() {
 
   function askAssistant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const request = assistantPrompt.trim();
-    if (!request) return;
-    const lower = request.toLowerCase();
-    const plan: Task[] = [];
-    const addPlanTask = (title: string, time: string, duration: number, category: string) => plan.push({
-      id: makeId(), title, time, duration, category, color: category === "Prayer" ? "gold" : category === "Study" ? "violet" : "green",
-      done: false, fixed: false, priority: category === "Study" || category === "Work" ? "High" : "Medium", day: 0,
-    });
-    addPlanTask("Plan the day", "08:00", 10, "Personal");
-    if (/work|office|job|school|class|study|assignment|exam/.test(lower)) addPlanTask("Focused work or study", "09:00", 60, lower.includes("work") || lower.includes("office") ? "Work" : "Study");
-    if (/prayer|salah|namaz|quran|qur'an|quaran/.test(lower)) addPlanTask("Prayer and quiet reflection", "12:30", 20, "Prayer");
-    if (/walk|exercise|gym|outdoor|play|sport/.test(lower)) addPlanTask("Outdoor movement", "17:00", 30, "Wellbeing");
-    if (/read|book|quran|qur'an|quaran/.test(lower)) addPlanTask("Reading time", "20:00", 25, "Reading");
-    if (/sleep|nap|rest|break/.test(lower)) addPlanTask("Rest and reset", "14:00", 25, "Rest");
-    addPlanTask("Prepare for tomorrow", "21:00", 10, "Personal");
+    const request = assistantPrompt.trim() || localStorage.getItem("dw-routine-preferences") ||
+      tasks.map((task) => `${task.title} at ${task.time}`).join("; ") ||
+      "Plan a balanced day with focused work, meals, movement, breaks, and a bedtime routine.";
+    if (rememberRoutine && assistantPrompt.trim()) localStorage.setItem("dw-routine-preferences", assistantPrompt.trim());
+    const plan = buildRoutinePlan(request, prayerData);
     setAssistantPlan(plan);
-    setAssistantReply(`I made a balanced starter plan from your priorities. It includes ${plan.length} suggested tasks. Adjust the times to fit your real commitments before adding it.`);
-  }
-
-  function addAssistantPlan() {
-    setTasks((current) => [...current, ...assistantPlan]);
-    setAssistantPlan([]);
-    setAssistantPrompt("");
-    notify("Suggested routine added to your day");
-    setPage("today");
+    setTasks((current) => {
+      const planIds = new Set(plan.map((task) => task.id));
+      const oldById = new Map(current.map((task) => [task.id, task]));
+      const retained = current.filter((task) => !task.assistantGenerated && !planIds.has(task.id));
+      const withSavedPrayerProgress = plan.map((task) => {
+        const old = oldById.get(task.id);
+        return old ? { ...task, done: old.done, doneDates: old.doneDates } : task;
+      });
+      return [...retained, ...withSavedPrayerProgress];
+    });
+    const prayerNote = /prayer|namaz|salah|fajr|zuhr|dhuhr|asr|maghrib|isha/i.test(request) && !prayerData
+      ? " Add your city in Settings to insert accurate local prayer times."
+      : "";
+    setAssistantReply(`I scheduled ${plan.length} tasks around the routine you described, created step-by-step checklist items, and added a few balance suggestions. Your new plan is already in Today and Checklist.${prayerNote}`);
+    notify(`${plan.length} tasks and checklists added to your day`);
   }
 
   function removeTask(id: string) {
@@ -868,11 +982,12 @@ export default function App() {
               <div className="assistant-title"><div className="ai-icon"><Bot size={20} /></div><div><h2>Routine assistant</h2><p>Describe your commitments and priorities; get an editable starter plan.</p></div></div>
               <div className="assistant-disclosure">This starter assistant runs in your browser and uses simple matching rules. It does not send your text to an AI service.</div>
               <form className="assistant-form" onSubmit={askAssistant}>
-                <label htmlFor="assistant-prompt">What should your day include?</label>
-                <textarea id="assistant-prompt" rows={4} value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} placeholder="For example: I have office work, want time for prayer and Quran reading, a walk, and an early night." />
-                <button className="primary" type="submit"><Sparkles size={16} /> Suggest my routine</button>
+                <label htmlFor="assistant-prompt">Tell me your usual routine, fixed commitments, priorities, and preferred sleep time.</label>
+                <textarea id="assistant-prompt" rows={5} value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} placeholder="For example: I wake at 6am, office 9am to 5pm, want prayer times, Quran reading, a walk, a call with family, and sleep at 10pm. I need 1 hour for my assignment." />
+                <label className="check-label remember-routine"><input type="checkbox" checked={rememberRoutine} onChange={(event) => setRememberRoutine(event.target.checked)} />Remember this as my usual routine for next time</label>
+                <button className="primary" type="submit"><Sparkles size={16} /> Create my full plan and checklist</button>
               </form>
-              {assistantReply && <div className="assistant-reply"><b>Suggested plan</b><p>{assistantReply}</p><div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><b>{task.title}</b><span>{task.duration} min</span></div>)}</div><button className="primary" onClick={addAssistantPlan}>Add these tasks to today</button></div>}
+              {assistantReply && <div className="assistant-reply"><b>Your plan is ready</b><p>{assistantReply}</p><div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><div><b>{task.title}</b><small>{task.category} · {task.duration} min · {task.steps?.length ?? 0} checklist steps</small></div><span>{task.fixed ? "Fixed" : task.priority}</span></div>)}</div></div>}
             </section>
           )}
 
@@ -889,13 +1004,13 @@ export default function App() {
               </div>
               <div className="task-list">
                 {todayTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    text={text}
-                    onToggle={toggleTask}
-                    onDelete={removeTask}
-                  />
+                  <div className="checklist-task" key={task.id}>
+                    <TaskRow task={task} text={text} onToggle={toggleTask} onDelete={removeTask} />
+                    {task.steps?.map((step) => {
+                      const done = step.doneDates.includes(todayKey);
+                      return <button key={step.id} className={`checklist-step ${done ? "step-done" : ""}`} onClick={() => toggleChecklistStep(task.id, step.id, todayKey)}><span>{done ? "✓" : "○"}</span>{step.title}</button>;
+                    })}
+                  </div>
                 ))}
               </div>
             </section>
