@@ -163,68 +163,12 @@ const labels: Record<Language, Labels> = {
   },
 };
 
-const starterTasks: Task[] = [
-  {
-    id: "task-1",
-    title: "Morning prayer",
-    time: "05:30",
-    duration: 20,
-    category: "Prayer",
-    color: "gold",
-    done: true,
-    fixed: true,
-    priority: "High",
-    day: 0,
-  },
-  {
-    id: "task-2",
-    title: "Plan your day",
-    time: "07:15",
-    duration: 15,
-    category: "Personal",
-    color: "blue",
-    done: false,
-    fixed: false,
-    priority: "Medium",
-    day: 0,
-  },
-  {
-    id: "task-3",
-    title: "Focus session · coursework",
-    time: "09:00",
-    duration: 90,
-    category: "Study",
-    color: "violet",
-    done: false,
-    fixed: true,
-    priority: "High",
-    day: 0,
-  },
-  {
-    id: "task-4",
-    title: "Take a lunch break",
-    time: "12:30",
-    duration: 45,
-    category: "Rest",
-    color: "green",
-    done: false,
-    fixed: false,
-    priority: "Low",
-    day: 0,
-  },
-  {
-    id: "task-5",
-    title: "Read a few pages",
-    time: "16:00",
-    duration: 30,
-    category: "Reading",
-    color: "rose",
-    done: false,
-    fixed: false,
-    priority: "Medium",
-    day: 0,
-  },
-];
+const routineCopy = {
+  en: { title: "Let’s build your routine together", intro: "I’ll ask about sleep, wake-up, work, and each activity’s timing and repeat days.", sleep: "First, what time do you usually go to sleep?", sleepLabel: "Usual sleep time", wake: "Thanks. What time do you usually wake up?", wakeLabel: "Usual wake-up time", work: "Do you have regular work, school, or class hours? Enter the hours and days, or skip this.", activity: "What activities should I plan? Add each activity with its time and whether it is daily, on selected weekdays, or monthly.", activityName: "Activity name", frequency: "How often?", addActivity: "Add activity", review: "Review your routine", create: "Create full routine" },
+  ur: { title: "آئیے مل کر آپ کا معمول بناتے ہیں", intro: "میں پہلے سونے، جاگنے، کام اور ہر سرگرمی کے وقت اور دن پوچھوں گا۔", sleep: "آپ عام طور پر کس وقت سوتے ہیں؟", sleepLabel: "سونے کا معمول کا وقت", wake: "شکریہ۔ آپ عام طور پر کس وقت جاگتے ہیں؟", wakeLabel: "جاگنے کا معمول کا وقت", work: "کیا آپ کے کام، اسکول یا کلاس کے مقررہ اوقات ہیں؟ وقت اور دن بتائیں یا چھوڑ دیں۔", activity: "کون سی سرگرمیاں شیڈول کروں؟ ہر سرگرمی کا وقت اور روزانہ، ہفتہ وار یا ماہانہ تکرار منتخب کریں۔", activityName: "سرگرمی کا نام", frequency: "کتنی بار؟", addActivity: "سرگرمی شامل کریں", review: "اپنا معمول دیکھیں", create: "پورا معمول بنائیں" },
+} satisfies Record<Language, Record<string, string>>;
+
+const starterTasks: Task[] = [];
 
 function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -399,7 +343,8 @@ function buildRoutineFromAnswers(profile: RoutineProfile, prayerData: PrayerData
 function readTasks(): Task[] {
   try {
     const savedTasks = localStorage.getItem("dw-tasks");
-    return savedTasks ? (JSON.parse(savedTasks) as Task[]) : starterTasks;
+    const parsed = savedTasks ? (JSON.parse(savedTasks) as Task[]) : starterTasks;
+    return parsed.filter((task) => !["task-1", "task-2", "task-3", "task-4", "task-5"].includes(task.id));
   } catch {
     return starterTasks;
   }
@@ -447,6 +392,10 @@ export default function App() {
   });
 
   const text = labels[language];
+  const routineText = routineCopy[language];
+  const routineDays = language === "ur"
+    ? [{ id: 1, name: "پیر" }, { id: 2, name: "منگل" }, { id: 3, name: "بدھ" }, { id: 4, name: "جمعرات" }, { id: 5, name: "جمعہ" }, { id: 6, name: "ہفتہ" }, { id: 0, name: "اتوار" }]
+    : [{ id: 1, name: "Mon" }, { id: 2, name: "Tue" }, { id: 3, name: "Wed" }, { id: 4, name: "Thu" }, { id: 5, name: "Fri" }, { id: 6, name: "Sat" }, { id: 0, name: "Sun" }];
 
   useEffect(() => {
     localStorage.setItem("dw-tasks", JSON.stringify(tasks));
@@ -1163,21 +1112,21 @@ export default function App() {
 
           {page === "assistant" && (
             <section className="panel full-panel assistant-page">
-              <div className="assistant-title"><div className="ai-icon"><Bot size={20} /></div><div><h2>Let’s build your routine together</h2><p>I’ll ask about sleep, wake-up, work, and each activity’s timing and repeat days.</p></div></div>
+              <div className="assistant-title"><div className="ai-icon"><Bot size={20} /></div><div><h2>{routineText.title}</h2><p>{routineText.intro}</p></div></div>
               <div className="assistant-disclosure">Answer each step. Your usual routine is saved on this device. Review the complete schedule before adding it.</div>
               <div className="routine-stepper">{["sleep", "wake", "work", "activities", "review"].map((step, index) => <span key={step} className={plannerStep === step ? "current" : ""}>{index + 1}. {step === "work" ? "Work / study" : step}</span>)}</div>
 
-              {plannerStep === "sleep" && <div className="routine-question"><span className="assistant-bubble">First, what time do you usually go to sleep?</span><label>Usual sleep time<input type="time" value={routineProfile.sleepTime} onChange={(event) => setRoutineProfile({ ...routineProfile, sleepTime: event.target.value })} /></label><button className="primary" disabled={!routineProfile.sleepTime} onClick={() => setPlannerStep("wake")}>Next: wake-up time <ChevronRight size={16} /></button></div>}
+              {plannerStep === "sleep" && <div className="routine-question"><span className="assistant-bubble">{routineText.sleep}</span><label>{routineText.sleepLabel}<input type="time" value={routineProfile.sleepTime} onChange={(event) => setRoutineProfile({ ...routineProfile, sleepTime: event.target.value })} /></label><button className="primary" disabled={!routineProfile.sleepTime} onClick={() => setPlannerStep("wake")}>{language === "ur" ? "اگلا: جاگنے کا وقت" : "Next: wake-up time"} <ChevronRight size={16} /></button></div>}
 
-              {plannerStep === "wake" && <div className="routine-question"><span className="assistant-bubble">Thanks. What time do you usually wake up?</span><label>Usual wake-up time<input type="time" value={routineProfile.wakeTime} onChange={(event) => setRoutineProfile({ ...routineProfile, wakeTime: event.target.value })} /></label><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("sleep")}>Back</button><button className="primary" disabled={!routineProfile.wakeTime} onClick={() => setPlannerStep("work")}>Next: work or study <ChevronRight size={16} /></button></div></div>}
+              {plannerStep === "wake" && <div className="routine-question"><span className="assistant-bubble">{routineText.wake}</span><label>{routineText.wakeLabel}<input type="time" value={routineProfile.wakeTime} onChange={(event) => setRoutineProfile({ ...routineProfile, wakeTime: event.target.value })} /></label><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("sleep")}>{language === "ur" ? "واپس" : "Back"}</button><button className="primary" disabled={!routineProfile.wakeTime} onClick={() => setPlannerStep("work")}>{language === "ur" ? "اگلا: کام یا پڑھائی" : "Next: work or study"} <ChevronRight size={16} /></button></div></div>}
 
-              {plannerStep === "work" && <div className="routine-question"><span className="assistant-bubble">Do you have regular work, school, or class hours? Enter the hours and days, or skip this.</span><label>Commitment<input value={routineProfile.workTitle} onChange={(event) => setRoutineProfile({ ...routineProfile, workTitle: event.target.value })} placeholder="Office, school, university…" /></label>{routineProfile.workTitle && <><div className="form-row"><label>Starts<input type="time" value={routineProfile.workStart} onChange={(event) => setRoutineProfile({ ...routineProfile, workStart: event.target.value })} /></label><label>Ends<input type="time" value={routineProfile.workEnd} onChange={(event) => setRoutineProfile({ ...routineProfile, workEnd: event.target.value })} /></label></div><p className="frequency-prompt">Which days?</p><div className="weekday-picks">{[{ id: 1, name: "Mon" }, { id: 2, name: "Tue" }, { id: 3, name: "Wed" }, { id: 4, name: "Thu" }, { id: 5, name: "Fri" }, { id: 6, name: "Sat" }, { id: 0, name: "Sun" }].map((day) => <label key={day.id}><input type="checkbox" checked={routineProfile.workDays.includes(day.id)} onChange={() => setRoutineProfile({ ...routineProfile, workDays: routineProfile.workDays.includes(day.id) ? routineProfile.workDays.filter((d) => d !== day.id) : [...routineProfile.workDays, day.id] })} />{day.name}</label>)}</div></>}<div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("wake")}>Back</button><button className="outline" onClick={() => { setRoutineProfile({ ...routineProfile, workTitle: "" }); setPlannerStep("activities"); }}>Skip work</button><button className="primary" onClick={() => setPlannerStep("activities")}>Next: activities <ChevronRight size={16} /></button></div></div>}
+              {plannerStep === "work" && <div className="routine-question"><span className="assistant-bubble">{routineText.work}</span><label>{language === "ur" ? "کام یا پڑھائی کا نام" : "Commitment"}<input value={routineProfile.workTitle} onChange={(event) => setRoutineProfile({ ...routineProfile, workTitle: event.target.value })} placeholder="Office, school, university…" /></label>{routineProfile.workTitle && <><div className="form-row"><label>{language === "ur" ? "شروع" : "Starts"}<input type="time" value={routineProfile.workStart} onChange={(event) => setRoutineProfile({ ...routineProfile, workStart: event.target.value })} /></label><label>{language === "ur" ? "ختم" : "Ends"}<input type="time" value={routineProfile.workEnd} onChange={(event) => setRoutineProfile({ ...routineProfile, workEnd: event.target.value })} /></label></div><p className="frequency-prompt">{language === "ur" ? "کن دنوں میں؟" : "Which days?"}</p><div className="weekday-picks">{routineDays.map((day) => <label key={day.id}><input type="checkbox" checked={routineProfile.workDays.includes(day.id)} onChange={() => setRoutineProfile({ ...routineProfile, workDays: routineProfile.workDays.includes(day.id) ? routineProfile.workDays.filter((d) => d !== day.id) : [...routineProfile.workDays, day.id] })} />{day.name}</label>)}</div></>}<div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("wake")}>Back</button><button className="outline" onClick={() => { setRoutineProfile({ ...routineProfile, workTitle: "" }); setPlannerStep("activities"); }}>Skip work</button><button className="primary" onClick={() => setPlannerStep("activities")}>Next: activities <ChevronRight size={16} /></button></div></div>}
 
-              {plannerStep === "activities" && <div className="routine-question"><span className="assistant-bubble">What activities should I plan? Add each activity with its time and whether it is daily, on selected weekdays, or monthly.</span><form className="activity-entry" onSubmit={addRoutineActivity}><label>Activity name<div className="activity-name-input"><input required value={activityDraft.title} onChange={(event) => setActivityDraft({ ...activityDraft, title: event.target.value })} placeholder="Prayer, Quran, assignment, walk…" /><button className={`voice-note-button ${isListening ? "is-listening" : ""}`} type="button" onClick={() => toggleVoiceNote("activity")} aria-label={isListening ? "Stop dictation" : "Speak activity"}>{isListening ? <MicOff size={17} /> : <Mic size={17} />}</button></div></label>{isListening && <small className="voice-note-status">Listening… {voiceInterim}</small>}<div className="form-row"><label>Time<input type="time" required value={activityDraft.time} onChange={(event) => setActivityDraft({ ...activityDraft, time: event.target.value })} /></label><label>Duration (minutes)<input type="number" min="5" max="720" value={activityDraft.duration} onChange={(event) => setActivityDraft({ ...activityDraft, duration: event.target.value })} /></label></div><label>How often?<select value={activityDraft.recurrence} onChange={(event) => setActivityDraft({ ...activityDraft, recurrence: event.target.value as Recurrence, recurrenceDay: event.target.value === "monthly" ? new Date().getDate() : activityDraft.recurrenceDay })}><option value="daily">Every day</option><option value="weekly">Weekly on selected days</option><option value="monthly">Monthly on a date</option></select></label>{activityDraft.recurrence === "monthly" && <label>Day of month<input type="number" min="1" max="31" value={activityDraft.recurrenceDay} onChange={(event) => setActivityDraft({ ...activityDraft, recurrenceDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })} /></label>}{activityDraft.recurrence === "weekly" && <><p className="frequency-prompt">Choose days:</p><div className="weekday-picks">{[{ id: 1, name: "Mon" }, { id: 2, name: "Tue" }, { id: 3, name: "Wed" }, { id: 4, name: "Thu" }, { id: 5, name: "Fri" }, { id: 6, name: "Sat" }, { id: 0, name: "Sun" }].map((day) => <label key={day.id}><input type="checkbox" checked={activityDraft.recurrenceDays.includes(day.id)} onChange={() => setActivityDraft({ ...activityDraft, recurrenceDays: activityDraft.recurrenceDays.includes(day.id) ? activityDraft.recurrenceDays.filter((d) => d !== day.id) : [...activityDraft.recurrenceDays, day.id] })} />{day.name}</label>)}</div></>}<button className="primary" type="submit"><Plus size={16} /> Add activity</button></form>
+              {plannerStep === "activities" && <div className="routine-question"><span className="assistant-bubble">{routineText.activity}</span><form className="activity-entry" onSubmit={addRoutineActivity}><label>{routineText.activityName}<div className="activity-name-input"><input required value={activityDraft.title} onChange={(event) => setActivityDraft({ ...activityDraft, title: event.target.value })} placeholder="Prayer, Quran, assignment, walk…" /><button className={`voice-note-button ${isListening ? "is-listening" : ""}`} type="button" onClick={() => toggleVoiceNote("activity")} aria-label={isListening ? "Stop dictation" : "Speak activity"}>{isListening ? <MicOff size={17} /> : <Mic size={17} />}</button></div></label>{isListening && <small className="voice-note-status">Listening… {voiceInterim}</small>}<div className="form-row"><label>Time<input type="time" required value={activityDraft.time} onChange={(event) => setActivityDraft({ ...activityDraft, time: event.target.value })} /></label><label>Duration (minutes)<input type="number" min="5" max="720" value={activityDraft.duration} onChange={(event) => setActivityDraft({ ...activityDraft, duration: event.target.value })} /></label></div><label>{routineText.frequency}<select value={activityDraft.recurrence} onChange={(event) => setActivityDraft({ ...activityDraft, recurrence: event.target.value as Recurrence, recurrenceDay: event.target.value === "monthly" ? new Date().getDate() : activityDraft.recurrenceDay })}>{language === "ur" ? <option value="daily">ہر روز</option> : <option value="daily">Every day</option>}{language === "ur" ? <option value="weekly">منتخب دنوں میں ہر ہفتے</option> : <option value="weekly">Weekly on selected days</option>}{language === "ur" ? <option value="monthly">ہر ماہ منتخب تاریخ</option> : <option value="monthly">Monthly on a date</option>}</select></label>{activityDraft.recurrence === "monthly" && <label>Day of month<input type="number" min="1" max="31" value={activityDraft.recurrenceDay} onChange={(event) => setActivityDraft({ ...activityDraft, recurrenceDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })} /></label>}{activityDraft.recurrence === "weekly" && <><p className="frequency-prompt">{language === "ur" ? "دن منتخب کریں:" : "Choose days:"}</p><div className="weekday-picks">{routineDays.map((day) => <label key={day.id}><input type="checkbox" checked={activityDraft.recurrenceDays.includes(day.id)} onChange={() => setActivityDraft({ ...activityDraft, recurrenceDays: activityDraft.recurrenceDays.includes(day.id) ? activityDraft.recurrenceDays.filter((d) => d !== day.id) : [...activityDraft.recurrenceDays, day.id] })} />{day.name}</label>)}</div></>}<button className="primary" type="submit"><Plus size={16} /> {routineText.addActivity}</button></form>
                 {routineProfile.activities.map((activity) => <div className="routine-activity-item" key={activity.id}><span>{activity.time}</span><b>{activity.title}</b><small>{activity.recurrence === "daily" ? "Daily" : activity.recurrence === "monthly" ? `Monthly · ${activity.recurrenceDay}` : `Weekly · ${activity.recurrenceDays.map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}`}</small><button className="delete-btn" onClick={() => setRoutineProfile({ ...routineProfile, activities: routineProfile.activities.filter((item) => item.id !== activity.id) })}><Trash2 size={14} /></button></div>)}
-                <div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("work")}>Back</button><button className="primary" disabled={!routineProfile.activities.length && !routineProfile.workTitle} onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>Review full plan <ChevronRight size={16} /></button><button className="text-button" onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>Skip activities</button></div></div>}
+                <div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("work")}>Back</button><button className="primary" disabled={!routineProfile.activities.length && !routineProfile.workTitle} onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>{language === "ur" ? "پورا منصوبہ دیکھیں" : "Review full plan"} <ChevronRight size={16} /></button><button className="text-button" onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>Skip activities</button></div></div>}
 
-              {plannerStep === "review" && <div className="assistant-reply"><b>Review your routine</b><p>Check the schedule. Creating it will add all tasks and checklist steps.</p><div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><div><b>{task.title}</b><small>{task.category} · {task.duration} min · {task.recurrence === "weekly" ? `Weekly · ${(task.recurrenceDays ?? []).map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}` : task.recurrence === "monthly" ? `Monthly · day ${task.recurrenceDay}` : "Daily"} · {task.steps?.length ?? 0} checklist steps</small></div></div>)}</div><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("activities")}>Edit routine</button><button className="primary" onClick={saveRoutinePlan}><Check size={16} /> Create full routine</button></div>{assistantReply && <p className="routine-save-message">{assistantReply}</p>}</div>}
+              {plannerStep === "review" && <div className="assistant-reply"><b>{routineText.review}</b><p>Check the schedule. Creating it will add all tasks and checklist steps.</p><div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><div><b>{task.title}</b><small>{task.category} · {task.duration} min · {task.recurrence === "weekly" ? `Weekly · ${(task.recurrenceDays ?? []).map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}` : task.recurrence === "monthly" ? `Monthly · day ${task.recurrenceDay}` : "Daily"} · {task.steps?.length ?? 0} checklist steps</small></div></div>)}</div><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("activities")}>Edit routine</button><button className="primary" onClick={saveRoutinePlan}><Check size={16} /> {routineText.create}</button></div>{assistantReply && <p className="routine-save-message">{assistantReply}</p>}</div>}
             </section>
           )}
 
@@ -1335,7 +1284,7 @@ export default function App() {
               <label>
                 Repeat
                 <select value={form.recurrence} onChange={(event) => { const recurrence = event.target.value as Recurrence; setForm({ ...form, recurrence, recurrenceDay: recurrence === "monthly" ? new Date().getDate() : recurrence === "weekly" ? new Date().getDay() : form.recurrenceDay }); }}>
-                  <option value="daily">Every day</option>
+                  {language === "ur" ? <option value="daily">ہر روز</option> : <option value="daily">Every day</option>}
                   <option value="weekly">Every week</option>
                   <option value="monthly">Every month</option>
                 </select>
