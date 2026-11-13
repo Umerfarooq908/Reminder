@@ -12,6 +12,8 @@ import {
   ListChecks,
   LogOut,
   MapPin,
+  Mic,
+  MicOff,
   Menu,
   Plus,
   Sparkles,
@@ -42,6 +44,23 @@ type Task = {
 };
 
 type ChecklistStep = { id: string; title: string; doneDates: string[] };
+
+type SpeechResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechEventLike = Event & { resultIndex: number; results: ArrayLike<SpeechResultLike> };
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechEventLike) => void) | null;
+  onerror: ((event: Event & { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+};
+type SpeechWindowLike = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+};
 
 type Labels = {
   today: string;
@@ -352,6 +371,9 @@ export default function App() {
   const [rememberRoutine, setRememberRoutine] = useState(true);
   const [assistantReply, setAssistantReply] = useState("");
   const [assistantPlan, setAssistantPlan] = useState<Task[]>([]);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceInterim, setVoiceInterim] = useState("");
+  const speechRecognition = useRef<SpeechRecognitionLike | null>(null);
   const [prayerSettings, setPrayerSettings] = useState<PrayerSettings>(() => readStored("dw-prayer-settings", { city: "", country: "", method: "1", school: "1" }));
   const [prayerData, setPrayerData] = useState<PrayerData | null>(() => readStored("dw-prayer-times", null));
   const [remindersEnabled, setRemindersEnabled] = useState(() => localStorage.getItem("dw-reminders") === "yes");
@@ -379,6 +401,8 @@ export default function App() {
       serviceWorkerReady.current.catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => () => speechRecognition.current?.stop(), []);
 
   useEffect(() => {
     localStorage.setItem("dw-prayer-settings", JSON.stringify(prayerSettings));
@@ -582,6 +606,53 @@ export default function App() {
       : "";
     setAssistantReply(`I scheduled ${plan.length} tasks around the routine you described, created step-by-step checklist items, and added a few balance suggestions. Your new plan is already in Today and Checklist.${prayerNote}`);
     notify(`${plan.length} tasks and checklists added to your day`);
+  }
+
+  function toggleVoiceNote() {
+    if (isListening) {
+      speechRecognition.current?.stop();
+      setIsListening(false);
+      return;
+    }
+    const speechWindow = window as SpeechWindowLike;
+    const SpeechRecognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      notify("Voice input is not supported in this browser. Try an updated Chrome or Edge browser.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = language === "ur" ? "ur-PK" : "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const part = event.results[index][0].transcript;
+        if (event.results[index].isFinal) finalText += part;
+        else interimText += part;
+      }
+      if (finalText.trim()) setAssistantPrompt((current) => `${current.trim()}${current.trim() ? " " : ""}${finalText.trim()}`);
+      setVoiceInterim(interimText);
+    };
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      const message = event.error === "not-allowed" ? "Allow microphone access in your browser to dictate." : event.error === "language-not-supported" ? "Speech recognition for this language is not available in this browser." : "Voice recognition stopped. You can still type your routine.";
+      notify(message);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      setVoiceInterim("");
+      speechRecognition.current = null;
+    };
+    speechRecognition.current = recognition;
+    try {
+      recognition.start();
+      setIsListening(true);
+    } catch {
+      setIsListening(false);
+      notify("Could not start the microphone. Please try again.");
+    }
   }
 
   function removeTask(id: string) {
@@ -983,7 +1054,15 @@ export default function App() {
               <div className="assistant-disclosure">This starter assistant runs in your browser and uses simple matching rules. It does not send your text to an AI service.</div>
               <form className="assistant-form" onSubmit={askAssistant}>
                 <label htmlFor="assistant-prompt">Tell me your usual routine, fixed commitments, priorities, and preferred sleep time.</label>
-                <textarea id="assistant-prompt" rows={5} value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} placeholder="For example: I wake at 6am, office 9am to 5pm, want prayer times, Quran reading, a walk, a call with family, and sleep at 10pm. I need 1 hour for my assignment." />
+                <div className="voice-note-input">
+                  <textarea id="assistant-prompt" rows={5} value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} placeholder="For example: I wake at 6am, office 9am to 5pm, want prayer times, Quran reading, a walk, a call with family, and sleep at 10pm. I need 1 hour for my assignment." />
+                  <button className={`voice-note-button ${isListening ? "is-listening" : ""}`} type="button" onClick={toggleVoiceNote} aria-pressed={isListening} aria-label={isListening ? "Stop voice note" : "Dictate your routine"} title={isListening ? "Stop dictation" : `Dictate in ${language === "ur" ? "Urdu" : "English"}`}>
+                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                    <span>{isListening ? "Stop" : "Speak"}</span>
+                  </button>
+                  {isListening && <div className="voice-note-status" aria-live="polite">Listening… speak your routine.{voiceInterim ? ` ${voiceInterim}` : ""}</div>}
+                </div>
+                <small className="voice-note-help">The transcript will appear here for you to review. Speech recognition availability depends on your browser, and some browsers process speech through an online service.</small>
                 <label className="check-label remember-routine"><input type="checkbox" checked={rememberRoutine} onChange={(event) => setRememberRoutine(event.target.checked)} />Remember this as my usual routine for next time</label>
                 <button className="primary" type="submit"><Sparkles size={16} /> Create my full plan and checklist</button>
               </form>

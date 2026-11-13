@@ -856,6 +856,13 @@ button {
 .assistant-form { max-width: 680px; }
 .assistant-form label, .settings-section label { display: grid; gap: 7px; }
 .assistant-form textarea { width: 100%; min-height: 110px; resize: vertical; padding: 12px; border: 1px solid #e0e7df; border-radius: 9px; color: #30483a; background: #fff; font: inherit; font-size: 13px; }
+.voice-note-input { position: relative; }
+.voice-note-input textarea { padding-right: 86px; }
+.voice-note-button { position: absolute; top: 10px; right: 10px; display: flex; align-items: center; gap: 5px; padding: 8px 10px; border: 1px solid #dce6dc; border-radius: 9px; color: #45674d; background: #fff; font-size: 11px; }
+.voice-note-button:hover { background: #f2f6f1; }
+.voice-note-button.is-listening { border-color: #d89a90; color: #a7473f; background: #fff1ef; }
+.voice-note-status { margin-top: 7px; color: #a7473f; font-size: 11px; }
+.voice-note-help { display: block; margin-top: 7px; color: #829087; font-size: 10px; line-height: 1.5; }
 .assistant-form .primary { margin-top: 12px; }
 .remember-routine { margin: 12px 0 4px; color: #627166; font-size: 11px; }
 .remember-routine input { accent-color: #628463; }
