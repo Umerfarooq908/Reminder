@@ -854,6 +854,26 @@ button {
 .assistant-title { display: flex; align-items: center; gap: 12px; }
 .assistant-title h2, .assistant-title p { margin: 0; }
 .assistant-title p { margin-top: 5px; color: #829087; font-size: 12px; }
+.routine-stepper { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
+.routine-stepper span { padding: 7px 10px; border-radius: 18px; color: #829087; background: #f3f5f2; font-size: 10px; text-transform: capitalize; }
+.routine-stepper span.current { color: #fff; background: #48684f; }
+.routine-question { max-width: 700px; display: grid; gap: 15px; }
+.routine-question > label, .activity-entry > label { display: grid; gap: 7px; color: #536358; font-size: 12px; }
+.routine-question input, .routine-question select, .activity-entry input, .activity-entry select { min-width: 0; padding: 10px; border: 1px solid #e0e7df; border-radius: 8px; background: #fff; }
+.assistant-bubble { width: fit-content; max-width: 620px; padding: 12px 15px; border-radius: 12px 12px 12px 2px; color: #405b46; background: #edf4ec; font-size: 13px; line-height: 1.5; }
+.wizard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 16px; }
+.weekday-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.weekday-picks label { display: flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid #e5eae3; border-radius: 8px; font-size: 11px; }
+.weekday-picks input { accent-color: #628463; }
+.frequency-prompt { margin: 0; color: #647269; font-size: 11px; }
+.activity-entry { display: grid; gap: 13px; padding: 14px; border: 1px solid #e8ece7; border-radius: 11px; }
+.activity-name-input { display: flex; gap: 7px; }
+.activity-name-input input { flex: 1; }
+.routine-activity-item { display: grid; grid-template-columns: 52px 1fr auto auto; align-items: center; gap: 8px; padding: 9px; border-bottom: 1px solid #eff1ee; font-size: 11px; }
+.routine-activity-item span, .routine-activity-item small { color: #829087; }
+.routine-activity-item small { text-align: right; }
+.text-button { padding: 8px; border: 0; color: #607464; background: transparent; }
+.routine-save-message { margin-top: 12px; color: #4b7954; font-size: 12px; }
 .assistant-disclosure { margin: 18px 0; padding: 11px 13px; border-radius: 9px; color: #66766a; background: #f3f6f1; font-size: 11px; line-height: 1.5; }
 .assistant-form { max-width: 680px; }
 .assistant-form label, .settings-section label { display: grid; gap: 7px; }
