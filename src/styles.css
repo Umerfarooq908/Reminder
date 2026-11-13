@@ -830,6 +830,51 @@ button {
   display: none;
 }
 
+.month-controls { display: flex; align-items: center; gap: 12px; color: #30483a; }
+.month-controls .icon-btn { width: 34px; height: 34px; justify-content: center; padding: 0; }
+.sheet-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0 10px; color: #748078; font-size: 11px; }
+.sheet-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sheet-legend i { display: inline-grid; width: 19px; height: 19px; place-items: center; border-radius: 6px; font-style: normal; font-weight: 700; }
+.month-table-wrap { overflow: auto; max-height: 62vh; border: 1px solid #e8ece7; border-radius: 10px; }
+.month-table { min-width: max-content; border-collapse: separate; border-spacing: 0; font-size: 10px; }
+.month-table th, .month-table td { min-width: 33px; height: 37px; padding: 3px; border-right: 1px solid #edf0eb; border-bottom: 1px solid #edf0eb; text-align: center; }
+.month-table thead th { position: sticky; top: 0; z-index: 2; background: #f5f7f3; color: #647269; }
+.month-table .task-heading { position: sticky; left: 0; z-index: 1; width: 180px; min-width: 180px; max-width: 180px; padding: 8px 10px; background: #fff; text-align: left; }
+.month-table thead .task-heading { z-index: 3; background: #f5f7f3; }
+.month-table .task-heading b, .month-table .task-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.month-table .task-heading small { margin-top: 3px; color: #829087; font-size: 9px; font-weight: 400; }
+.sheet-cell { display: inline-grid; width: 25px; height: 25px; place-items: center; padding: 0; border: 0; border-radius: 7px; font-weight: 700; }
+.sheet-cell:not(:disabled) { cursor: pointer; }
+.sheet-done { color: #28794b; background: #e3f3e8; }
+.sheet-missed { color: #b8524d; background: #fff0ed; }
+.sheet-future { color: #a1aaa3; background: #f3f5f2; }
+.month-note { margin: 12px 0 0; font-size: 11px; }
+.assistant-title { display: flex; align-items: center; gap: 12px; }
+.assistant-title h2, .assistant-title p { margin: 0; }
+.assistant-title p { margin-top: 5px; color: #829087; font-size: 12px; }
+.assistant-disclosure { margin: 18px 0; padding: 11px 13px; border-radius: 9px; color: #66766a; background: #f3f6f1; font-size: 11px; line-height: 1.5; }
+.assistant-form { max-width: 680px; }
+.assistant-form label, .settings-section label { display: grid; gap: 7px; }
+.assistant-form textarea { width: 100%; min-height: 110px; resize: vertical; padding: 12px; border: 1px solid #e0e7df; border-radius: 9px; color: #30483a; background: #fff; font: inherit; font-size: 13px; }
+.assistant-form .primary { margin-top: 12px; }
+.assistant-reply { max-width: 720px; margin-top: 23px; padding: 18px; border: 1px solid #e8ece7; border-radius: 12px; }
+.assistant-reply p { color: #748078; font-size: 12px; line-height: 1.55; }
+.assistant-plan-row { display: grid; grid-template-columns: 55px 1fr 55px; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eff1ee; font-size: 12px; }
+.assistant-plan-row time, .assistant-plan-row span { color: #829087; }
+.assistant-reply > .primary { margin-top: 15px; }
+.settings-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid #edf0eb; }
+.settings-section h3 { margin: 0 0 6px; font-size: 15px; }
+.settings-section p, .settings-section small { display: block; max-width: 700px; margin: 0 0 12px; color: #829087; font-size: 11px; line-height: 1.55; }
+.settings-section small { margin: 10px 0 0; }
+.settings-section .form-row { max-width: 700px; margin-bottom: 12px; }
+.settings-section input, .settings-section select { min-width: 0; padding: 9px; border: 1px solid #e0e7df; border-radius: 8px; background: #fff; }
+.prayer-panel .panel-head p { display: flex; align-items: center; gap: 4px; }
+.prayer-times { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin: 12px 0; }
+.prayer-times div { padding: 8px 3px; border-radius: 8px; background: #f5f7f3; text-align: center; }
+.prayer-times span, .prayer-times b { display: block; font-size: 10px; }
+.prayer-times span { margin-bottom: 5px; color: #829087; }
+.prayer-panel > small { font-size: 9px; }
+
 @media (max-width: 780px) {
   .sidebar {
     width: 270px;
@@ -892,6 +937,10 @@ button {
   .week-grid {
     gap: 4px;
   }
+
+  .month-controls { gap: 5px; font-size: 10px; }
+  .month-table .task-heading { width: 135px; min-width: 135px; max-width: 135px; }
+  .settings-section .form-row { grid-template-columns: 1fr; }
 
   .week-day span {
     font-size: 8px;
