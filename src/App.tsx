@@ -393,6 +393,7 @@ export default function App() {
   const speechRecognition = useRef<SpeechRecognitionLike | null>(null);
   const [prayerSettings, setPrayerSettings] = useState<PrayerSettings>(() => readStored("dw-prayer-settings", { city: "", country: "", method: "1", school: "1" }));
   const [prayerData, setPrayerData] = useState<PrayerData | null>(() => readStored("dw-prayer-times", null));
+  const [isFindingLocation, setIsFindingLocation] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(() => localStorage.getItem("dw-reminders") === "yes");
   const firedReminders = useRef<Set<string>>(new Set(readStored<string[]>("dw-fired-reminders", [])));
   const serviceWorkerReady = useRef<Promise<ServiceWorkerRegistration> | null>(null);
@@ -675,16 +676,78 @@ export default function App() {
       if (!response.ok) throw new Error("Prayer time service is unavailable");
       const json = await response.json();
       if (json.code !== 200 || !json.data?.timings) throw new Error("Could not find prayer times for that city");
-      const timings = json.data.timings as Record<string, string>;
-      setPrayerData({ date: todayKey, city: `${city}, ${country}`, times: timings });
-      const prayerTasks: Task[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map((prayer) => ({
-        id: `prayer-${prayer.toLowerCase()}`, title: `${prayer} prayer`, time: timings[prayer].slice(0, 5), duration: 15,
-        category: "Prayer", color: "gold", done: false, fixed: true, priority: "High", day: 0,
-      }));
-      setTasks((existing) => [...existing.filter((task) => !task.id.startsWith("prayer-")), ...prayerTasks]);
+      installPrayerTimes(json.data.timings as Record<string, string>, `${city}, ${country}`);
       notify("Prayer times updated for today");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not load prayer times");
+    }
+  }
+
+  function installPrayerTimes(timings: Record<string, string>, location: string) {
+    setPrayerData({ date: todayKey, city: location, times: timings });
+    setTasks((existing) => {
+      const previous = new Map(existing.filter((task) => task.id.startsWith("prayer-")).map((task) => [task.id, task]));
+      const prayerTasks: Task[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+        .filter((prayer) => timings[prayer])
+        .map((prayer) => {
+          const id = `prayer-${prayer.toLowerCase()}`;
+          const old = previous.get(id);
+          return {
+            id,
+            title: `${prayer} prayer`,
+            time: timings[prayer].slice(0, 5),
+            duration: 15,
+            category: "Prayer",
+            color: "gold",
+            done: old?.done ?? false,
+            doneDates: old?.doneDates,
+            fixed: true,
+            priority: "High",
+            day: 0,
+          };
+        });
+      return [...existing.filter((task) => !task.id.startsWith("prayer-")), ...prayerTasks];
+    });
+  }
+
+  async function useCurrentLocationForPrayerTimes() {
+    if (!navigator.geolocation) {
+      notify("Location is unavailable in this browser. Enter your city and country instead.");
+      return;
+    }
+    setIsFindingLocation(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 15000,
+          maximumAge: 300000,
+        });
+      });
+      const now = new Date();
+      const apiDate = `${String(now.getDate()).padStart(2, "0")}-${String(now.getMonth() + 1).padStart(2, "0")}-${now.getFullYear()}`;
+      const query = new URLSearchParams({
+        latitude: String(position.coords.latitude),
+        longitude: String(position.coords.longitude),
+        method: prayerSettings.method,
+        school: prayerSettings.school,
+      });
+      const response = await fetch(`https://api.aladhan.com/v1/timings/${apiDate}?${query}`);
+      if (!response.ok) throw new Error("Prayer time service is unavailable");
+      const json = await response.json();
+      if (json.code !== 200 || !json.data?.timings) throw new Error("Could not calculate prayer times for this location");
+      installPrayerTimes(json.data.timings as Record<string, string>, "Current location");
+      notify("Prayer times updated for your current location");
+    } catch (error) {
+      const locationCode = typeof error === "object" && error !== null && "code" in error ? Number(error.code) : 0;
+      const message = locationCode === 1
+        ? "Location permission was declined. You can enter your city manually."
+        : locationCode
+          ? "Could not get your location. Check device settings or enter your city manually."
+          : error instanceof Error ? error.message : "Could not load prayer times";
+      notify(message);
+    } finally {
+      setIsFindingLocation(false);
     }
   }
 
@@ -1288,7 +1351,9 @@ export default function App() {
               </div>
               <form className="settings-section location-form" onSubmit={loadPrayerTimes}>
                 <h3>Prayer times and location</h3>
-                <p>Enter a city manually; GPS permission is not required. We send the city and country to AlAdhan to retrieve estimated prayer times.</p>
+                <p>Choose location lookup or enter a city manually. If you tap the location button and allow browser access, your coordinates are sent to AlAdhan to calculate prayer times and are not saved by Daywell.</p>
+                <button className="outline location-button" type="button" onClick={useCurrentLocationForPrayerTimes} disabled={isFindingLocation}><MapPin size={16} /> {isFindingLocation ? "Finding location…" : "Use my current location"}</button>
+                <p className="location-or-manual">Or enter a city manually; GPS permission is not required. The city and country are sent to AlAdhan.</p>
                 <div className="form-row">
                   <label>City<input required value={prayerSettings.city} onChange={(event) => setPrayerSettings({ ...prayerSettings, city: event.target.value })} placeholder="e.g. Lahore" /></label>
                   <label>Country<input required value={prayerSettings.country} onChange={(event) => setPrayerSettings({ ...prayerSettings, country: event.target.value })} placeholder="e.g. Pakistan" /></label>

@@ -813,6 +813,8 @@ button {
   color: #607464;
   background: #fff;
 }
+.location-button { display: inline-flex; align-items: center; gap: 7px; }
+.location-or-manual { margin-top: 14px !important; }
 
 .toast {
   position: fixed;
