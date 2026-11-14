@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Download,
   Globe2,
   ListChecks,
   LogOut,
@@ -16,6 +17,7 @@ import {
   MicOff,
   Menu,
   Plus,
+  Pencil,
   Sparkles,
   Sun,
   Target,
@@ -191,6 +193,20 @@ function isTaskDone(task: Task, key: string): boolean {
   return task.doneDates?.includes(key) ?? (key === dateKey(new Date()) && task.done);
 }
 
+function tasksOverlapOnSchedule(first: Task, second: Task): boolean {
+  const today = new Date();
+  const firstStart = Number(first.time.slice(0, 2)) * 60 + Number(first.time.slice(3, 5));
+  const secondStart = Number(second.time.slice(0, 2)) * 60 + Number(second.time.slice(3, 5));
+  for (let offset = 0; offset < 370; offset += 1) {
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+    if (!isTaskScheduledForDate(first, day) || !isTaskScheduledForDate(second, day)) continue;
+    for (const shift of [-1440, 0, 1440]) {
+      if (firstStart < secondStart + shift + second.duration && firstStart + first.duration > secondStart + shift) return true;
+    }
+  }
+  return false;
+}
+
 type PrayerSettings = { city: string; country: string; method: string; school: string };
 type PrayerData = { date: string; city: string; times: Record<string, string> };
 
@@ -344,7 +360,7 @@ function readTasks(): Task[] {
   try {
     const savedTasks = localStorage.getItem("dw-tasks");
     const parsed = savedTasks ? (JSON.parse(savedTasks) as Task[]) : starterTasks;
-    return parsed.filter((task) => !["task-1", "task-2", "task-3", "task-4", "task-5"].includes(task.id));
+    return parsed.filter((task) => !["task-1", "task-2", "task-3", "task-4", "task-5"].includes(task.id)).map((task) => ({ ...task, steps: task.steps ?? checklistFor(task.category) }));
   } catch {
     return starterTasks;
   }
@@ -361,6 +377,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>(readTasks);
   const [page, setPage] = useState<Page>("today");
   const [showForm, setShowForm] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => new Date());
@@ -389,6 +406,7 @@ export default function App() {
     fixed: false,
     recurrence: "daily" as Recurrence,
     recurrenceDay: new Date().getDay(),
+    recurrenceDays: [new Date().getDay()],
   });
 
   const text = labels[language];
@@ -474,6 +492,25 @@ export default function App() {
     todayTasks.length === 0
       ? 0
       : Math.round((completedCount / todayTasks.length) * 100);
+  const focusMinutesToday = todayTasks.filter((task) => task.category === "Work" || task.category === "Study").reduce((total, task) => total + task.duration, 0);
+  const focusTimeToday = `${Math.floor(focusMinutesToday / 60)}h ${focusMinutesToday % 60}m`;
+  const completionStreak = useMemo(() => {
+    let streak = 0;
+    const today = new Date();
+    const todayComplete = todayTasks.length > 0 && todayTasks.every((task) => task.done);
+    for (let offset = todayComplete ? 0 : 1; offset < 370; offset += 1) {
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - offset);
+      const due = tasks.filter((task) => isTaskScheduledForDate(task, date));
+      if (!due.length) continue;
+      if (!due.every((task) => isTaskDone(task, dateKey(date)))) break;
+      streak += 1;
+    }
+    return streak;
+  }, [tasks, todayTasks]);
+  const weeklyOccurrences = useMemo(() => weekDates.filter((date) => dateKey(date) <= todayKey).flatMap((date) => tasks.filter((task) => isTaskScheduledForDate(task, date)).map((task) => ({ task, key: dateKey(date) }))), [tasks, weekDates, todayKey]);
+  const monthlyOccurrences = useMemo(() => monthDays.filter((date) => dateKey(date) <= todayKey).flatMap((date) => tasks.filter((task) => isTaskScheduledForDate(task, date)).map((task) => ({ task, key: dateKey(date) }))), [tasks, monthDays, todayKey]);
+  const weeklyRate = weeklyOccurrences.length ? Math.round(weeklyOccurrences.filter(({ task, key }) => isTaskDone(task, key)).length * 100 / weeklyOccurrences.length) : 0;
+  const monthlyRate = monthlyOccurrences.length ? Math.round(monthlyOccurrences.filter(({ task, key }) => isTaskDone(task, key)).length * 100 / monthlyOccurrences.length) : 0;
 
   const navigation: { id: Page; label: string }[] = [
     { id: "today", label: text.today },
@@ -488,6 +525,22 @@ export default function App() {
   function notify(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2200);
+  }
+
+  function exportMonthCsv() {
+    const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const headers = ["Task", "Category", "Time", "Repeat", ...monthDays.map((day) => dateKey(day))];
+    const rows = monthTasks.map((task) => [task.title, task.category, task.time, task.recurrence ?? "daily", ...monthDays.map((day) => {
+      if (!isTaskScheduledForDate(task, day) || dateKey(day) > todayKey) return "";
+      return isTaskDone(task, dateKey(day)) ? "✓" : "×";
+    })]);
+    const csv = `\uFEFF${[headers, ...rows].map((row) => row.map((value) => escape(String(value))).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Daywell-${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, "0")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleSignIn(event: FormEvent<HTMLFormElement>) {
@@ -505,9 +558,13 @@ export default function App() {
 
     const title = form.title.trim();
     if (!title) return;
+    if (form.recurrence === "weekly" && !form.recurrenceDays.length) {
+      notify("Choose at least one weekday for this task");
+      return;
+    }
 
     const newTask: Task = {
-      id: makeId(),
+      id: editingTaskId ?? makeId(),
       title,
       time: form.time,
       duration: Number(form.duration) || 30,
@@ -526,12 +583,40 @@ export default function App() {
       day: 0,
       recurrence: form.recurrence,
       recurrenceDay: form.recurrenceDay,
+      recurrenceDays: form.recurrence === "weekly" ? form.recurrenceDays : undefined,
+      steps: tasks.find((task) => task.id === editingTaskId)?.steps ?? checklistFor(form.category),
     };
 
-    setTasks((currentTasks) => [...currentTasks, newTask]);
+    const conflicts = tasks.filter((task) => task.id !== editingTaskId && tasksOverlapOnSchedule(newTask, task));
+    setTasks((currentTasks) => editingTaskId
+      ? currentTasks.map((task) => task.id === editingTaskId ? { ...newTask, done: task.done, doneDates: task.doneDates, assistantGenerated: task.assistantGenerated } : task)
+      : [...currentTasks, newTask]);
     setForm((currentForm) => ({ ...currentForm, title: "" }));
     setShowForm(false);
-    notify("Task added");
+    setEditingTaskId(null);
+    notify(conflicts.length ? `Saved, but overlaps with ${conflicts[0].title}` : editingTaskId ? "Task updated" : "Task added");
+  }
+
+  function startAddTask() {
+    setEditingTaskId(null);
+    setForm({ title: "", time: "09:00", duration: "30", category: "Personal", priority: "Medium", fixed: false, recurrence: "daily", recurrenceDay: new Date().getDay(), recurrenceDays: [new Date().getDay()] });
+    setShowForm(true);
+  }
+
+  function startEditTask(task: Task) {
+    setEditingTaskId(task.id);
+    setForm({
+      title: task.title,
+      time: task.time,
+      duration: String(task.duration),
+      category: task.category,
+      priority: task.priority,
+      fixed: task.fixed,
+      recurrence: task.recurrence ?? "daily",
+      recurrenceDay: task.recurrenceDay ?? new Date().getDay(),
+      recurrenceDays: task.recurrenceDays ?? [task.recurrenceDay ?? new Date().getDay()],
+    });
+    setShowForm(true);
   }
 
   function toggleTask(id: string) {
@@ -764,8 +849,8 @@ export default function App() {
           <div className="trial-box">
             <Sparkles size={17} />
             <div>
-              <b>7-day free trial · No card required</b>
-              <small>Then $1 for your first month, $5/month after</small>
+              <b>{language === "ur" ? "مفت پیش نظارہ · معمول کی منصوبہ بندی" : "Free preview · Routine planning"}</b>
+              <small>{language === "ur" ? "اکاؤنٹ اور ادائیگی ابھی منسلک نہیں ہیں۔" : "Accounts and payments are not connected yet."}</small>
             </div>
           </div>
 
@@ -897,7 +982,7 @@ export default function App() {
 
             <button
               className="primary add-top"
-              onClick={() => setShowForm(true)}
+              onClick={startAddTask}
             >
               <Plus size={17} />
               {text.add}
@@ -935,7 +1020,7 @@ export default function App() {
                   </div>
                   <div>
                     <small>Focus time</small>
-                    <b>2h 35m</b>
+                    <b>{focusTimeToday}</b>
                     <span>Across your planned tasks</span>
                   </div>
                 </div>
@@ -944,8 +1029,8 @@ export default function App() {
                   <div className="summary-icon gold-icon">✦</div>
                   <div>
                     <small>Consistency</small>
-                    <b>4 days</b>
-                    <span>You’re building a rhythm</span>
+                    <b>{completionStreak} days</b>
+                    <span>Completed-day streak</span>
                   </div>
                 </div>
               </div>
@@ -959,7 +1044,7 @@ export default function App() {
                     </div>
                     <button
                       className="primary"
-                      onClick={() => setShowForm(true)}
+                      onClick={startAddTask}
                     >
                       <Plus size={16} />
                       {text.add}
@@ -989,6 +1074,7 @@ export default function App() {
                           text={text}
                           onToggle={toggleTask}
                           onDelete={removeTask}
+                          onEdit={startEditTask}
                         />
                       ))
                     )}
@@ -1087,6 +1173,7 @@ export default function App() {
                   <button className="outline icon-btn" aria-label="Previous month" onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() - 1, 1))}><ChevronLeft size={17} /></button>
                   <b>{new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(selectedMonth)}</b>
                   <button className="outline icon-btn" aria-label="Next month" onClick={() => setSelectedMonth(new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 1))}><ChevronRight size={17} /></button>
+                  <button className="outline export-btn" onClick={exportMonthCsv}><Download size={15} /> Export CSV</button>
                 </div>
               </div>
               <div className="sheet-legend"><span><i className="sheet-done">✓</i> Done</span><span><i className="sheet-missed">×</i> Not done</span><span>— Future date</span></div>
@@ -1113,7 +1200,7 @@ export default function App() {
           {page === "assistant" && (
             <section className="panel full-panel assistant-page">
               <div className="assistant-title"><div className="ai-icon"><Bot size={20} /></div><div><h2>{routineText.title}</h2><p>{routineText.intro}</p></div></div>
-              <div className="assistant-disclosure">Answer each step. Your usual routine is saved on this device. Review the complete schedule before adding it.</div>
+              <div className="assistant-disclosure">{language === "ur" ? "یہ رہنمائی والا منصوبہ ساز ہے؛ مکمل AI چیٹ سروس ابھی منسلک نہیں۔ آپ کی روٹین اسی ڈیوائس پر محفوظ ہوتی ہے، اور شامل کرنے سے پہلے منصوبہ دیکھ سکتے ہیں۔" : "This is a guided, rule-based planner; a generative AI service is not connected yet. Your routine is saved on this device. Review the schedule before adding it."}</div>
               <div className="routine-stepper">{["sleep", "wake", "work", "activities", "review"].map((step, index) => <span key={step} className={plannerStep === step ? "current" : ""}>{index + 1}. {step === "work" ? "Work / study" : step}</span>)}</div>
 
               {plannerStep === "sleep" && <div className="routine-question"><span className="assistant-bubble">{routineText.sleep}</span><label>{routineText.sleepLabel}<input type="time" value={routineProfile.sleepTime} onChange={(event) => setRoutineProfile({ ...routineProfile, sleepTime: event.target.value })} /></label><button className="primary" disabled={!routineProfile.sleepTime} onClick={() => setPlannerStep("wake")}>{language === "ur" ? "اگلا: جاگنے کا وقت" : "Next: wake-up time"} <ChevronRight size={16} /></button></div>}
@@ -1126,7 +1213,7 @@ export default function App() {
                 {routineProfile.activities.map((activity) => <div className="routine-activity-item" key={activity.id}><span>{activity.time}</span><b>{activity.title}</b><small>{activity.recurrence === "daily" ? "Daily" : activity.recurrence === "monthly" ? `Monthly · ${activity.recurrenceDay}` : `Weekly · ${activity.recurrenceDays.map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}`}</small><button className="delete-btn" onClick={() => setRoutineProfile({ ...routineProfile, activities: routineProfile.activities.filter((item) => item.id !== activity.id) })}><Trash2 size={14} /></button></div>)}
                 <div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("work")}>Back</button><button className="primary" disabled={!routineProfile.activities.length && !routineProfile.workTitle} onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>{language === "ur" ? "پورا منصوبہ دیکھیں" : "Review full plan"} <ChevronRight size={16} /></button><button className="text-button" onClick={() => { setAssistantPlan(buildRoutineFromAnswers(routineProfile, prayerData)); setPlannerStep("review"); }}>Skip activities</button></div></div>}
 
-              {plannerStep === "review" && <div className="assistant-reply"><b>{routineText.review}</b><p>Check the schedule. Creating it will add all tasks and checklist steps.</p><div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><div><b>{task.title}</b><small>{task.category} · {task.duration} min · {task.recurrence === "weekly" ? `Weekly · ${(task.recurrenceDays ?? []).map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}` : task.recurrence === "monthly" ? `Monthly · day ${task.recurrenceDay}` : "Daily"} · {task.steps?.length ?? 0} checklist steps</small></div></div>)}</div><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("activities")}>Edit routine</button><button className="primary" onClick={saveRoutinePlan}><Check size={16} /> {routineText.create}</button></div>{assistantReply && <p className="routine-save-message">{assistantReply}</p>}</div>}
+              {plannerStep === "review" && <div className="assistant-reply"><b>{routineText.review}</b><p>Check the schedule. Creating it will add all tasks and checklist steps.</p>{assistantPlan.some((task, index) => assistantPlan.slice(index + 1).some((other) => tasksOverlapOnSchedule(task, other))) && <p className="schedule-warning">Some planned activities overlap. Review their times before saving.</p>}<div className="task-list">{assistantPlan.map((task) => <div className="assistant-plan-row" key={task.id}><time>{task.time}</time><div><b>{task.title}</b><small>{task.category} · {task.duration} min · {task.recurrence === "weekly" ? `Weekly · ${(task.recurrenceDays ?? []).map((day) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day]).join(", ")}` : task.recurrence === "monthly" ? `Monthly · day ${task.recurrenceDay}` : "Daily"} · {task.steps?.length ?? 0} checklist steps</small></div></div>)}</div><div className="wizard-actions"><button className="outline" onClick={() => setPlannerStep("activities")}>Edit routine</button><button className="primary" onClick={saveRoutinePlan}><Check size={16} /> {routineText.create}</button></div>{assistantReply && <p className="routine-save-message">{assistantReply}</p>}</div>}
             </section>
           )}
 
@@ -1144,7 +1231,7 @@ export default function App() {
               <div className="task-list">
                 {todayTasks.map((task) => (
                   <div className="checklist-task" key={task.id}>
-                    <TaskRow task={task} text={text} onToggle={toggleTask} onDelete={removeTask} />
+                    <TaskRow task={task} text={text} onToggle={toggleTask} onDelete={removeTask} onEdit={startEditTask} />
                     {task.steps?.map((step) => {
                       const done = step.doneDates.includes(todayKey);
                       return <button key={step.id} className={`checklist-step ${done ? "step-done" : ""}`} onClick={() => toggleChecklistStep(task.id, step.id, todayKey)}><span>{done ? "✓" : "○"}</span>{step.title}</button>;
@@ -1171,6 +1258,9 @@ export default function App() {
                   <small>Tasks planned</small>
                   <b>{todayTasks.length}</b>
                 </div>
+                <div><small>Completed this week</small><b>{weeklyRate}%</b></div>
+                <div><small>Completed this month</small><b>{monthlyRate}%</b></div>
+                <div><small>Current streak</small><b>{completionStreak} days</b></div>
               </div>
             </section>
           )}
@@ -1230,8 +1320,8 @@ export default function App() {
           <form className="modal" onSubmit={handleAddTask}>
             <div className="modal-head">
               <div>
-                <p className="eyebrow">ADD TO YOUR DAY</p>
-                <h2>{text.add}</h2>
+                <p className="eyebrow">{editingTaskId ? "EDIT YOUR TASK" : "ADD TO YOUR DAY"}</p>
+                <h2>{editingTaskId ? "Edit task" : text.add}</h2>
               </div>
               <button
                 type="button"
@@ -1290,7 +1380,7 @@ export default function App() {
                 </select>
               </label>
               {form.recurrence === "weekly" ? (
-                <label>Day of week<select value={form.recurrenceDay} onChange={(event) => setForm({ ...form, recurrenceDay: Number(event.target.value) })}>{[{ value: 1, label: "Monday" }, { value: 2, label: "Tuesday" }, { value: 3, label: "Wednesday" }, { value: 4, label: "Thursday" }, { value: 5, label: "Friday" }, { value: 6, label: "Saturday" }, { value: 0, label: "Sunday" }].map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label>
+                <div><p className="frequency-prompt">{language === "ur" ? "دن منتخب کریں:" : "Repeat on these days"}</p><div className="weekday-picks">{routineDays.map((day) => <label key={day.id}><input type="checkbox" checked={form.recurrenceDays.includes(day.id)} onChange={() => setForm({ ...form, recurrenceDays: form.recurrenceDays.includes(day.id) ? form.recurrenceDays.filter((item) => item !== day.id) : [...form.recurrenceDays, day.id], recurrenceDay: day.id })} />{day.name}</label>)}</div></div>
               ) : form.recurrence === "monthly" ? (
                 <label>Day of month<input type="number" min="1" max="31" value={Math.max(1, form.recurrenceDay)} onChange={(event) => setForm({ ...form, recurrenceDay: Math.min(31, Math.max(1, Number(event.target.value) || 1)) })} /></label>
               ) : <p className="repeat-help">This task appears on every day.</p>}
@@ -1352,8 +1442,8 @@ export default function App() {
               >
                 {text.cancel}
               </button>
-              <button className="primary" type="submit">
-                {text.save}
+                <button className="primary" type="submit">
+                  {editingTaskId ? text.save : text.add}
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -1388,11 +1478,13 @@ function TaskRow({
   text,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   task: Task;
   text: Labels;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (task: Task) => void;
 }) {
   const repeatLabel = task.recurrence === "weekly"
     ? ` · Weekly · ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][task.recurrenceDay ?? 0]}`
@@ -1423,6 +1515,10 @@ function TaskRow({
       <span className={`priority priority-${task.priority.toLowerCase()}`}>
         {task.priority}
       </span>
+
+      <button className="delete-btn" onClick={() => onEdit(task)} title="Edit task" aria-label="Edit task">
+        <Pencil size={15} />
+      </button>
 
       <button
         className="delete-btn"

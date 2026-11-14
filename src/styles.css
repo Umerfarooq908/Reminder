@@ -851,6 +851,8 @@ button {
 .sheet-missed { color: #b8524d; background: #fff0ed; }
 .sheet-future { color: #a1aaa3; background: #f3f5f2; }
 .month-note { margin: 12px 0 0; font-size: 11px; }
+.export-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.schedule-warning { padding: 9px 12px; border-radius: 8px; color: #8b5426; background: #fff4df; font-size: 12px; }
 .assistant-title { display: flex; align-items: center; gap: 12px; }
 .assistant-title h2, .assistant-title p { margin: 0; }
 .assistant-title p { margin-top: 5px; color: #829087; font-size: 12px; }
